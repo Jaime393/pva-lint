@@ -1,0 +1,10 @@
+{
+  "rule": "Ki_band",
+  "formula": "Ki = phi^-1 * (Df/2.5) * (l_corr/l0)",
+  "resiliencia": [0.55, 0.62],
+  "colapso": "<0.3",
+  "metricas": ["DFA alpha 0.5 ruido 1.0 criticalidad 1.5 browniano", "Higuchi k_max 10-20", "box-counting 2-100mm", "l_corr fMRI"],
+  "falsador": "Ki bajo con conciencia reportada => MIU falla",
+  "phi_global": 9158.79,
+  "rho": ">0"
+}
