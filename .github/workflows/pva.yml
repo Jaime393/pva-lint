@@ -1,0 +1,16 @@
+name: PVA lint
+on: [push, pull_request]
+jobs:
+  pva:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: pip install requests click
+      - name: Run pva-lint
+        run: python cli.py --json > pva_report.json
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pva-report
+          path: pva_report.json
