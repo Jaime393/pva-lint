@@ -9,3 +9,6 @@ test:
 
 lint:
 	python cli.py
+
+reproduce:
+	python cli.py --json
