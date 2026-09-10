@@ -1,0 +1,1 @@
+{"rule":"lexicon_coherencia","lexicon_path":"docs/MIU/LEXICON_CANONICO.md","checks":["rho>0 savia primordial","Ki in [0.55,0.62] anillo crecimiento","Phi>Phi_c 0.31 savia circulante","beta≈0.5 curva crecimiento","ningun termino mapea a deploy_worker — solo conceptos MIU"],"phi_global":9158.79,"rho":">0","transparencia":"auditable"}
