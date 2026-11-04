@@ -1,93 +1,87 @@
 #!/usr/bin/env python3
-"""
-pva-lint — Linter PVA V202 — ρ(x)>0 — EL SUELO ES
-Verifica DOI, datos públicos, código abierto, Dockerfile, make reproduce, figuras con código
-Score 0-1 — transición fase >0.999
-"""
-import re, json, requests, click
+"""Offline artifact-readiness inventory, not scientific or public-access validation."""
+import argparse
+import hashlib
+import json
 from pathlib import Path
+import re
 
-def check_doi(doi):
-    try:
-        r = requests.get(f"https://doi.org/api/handles/{doi}", timeout=5)
-        return r.status_code == 200
-    except:
-        return False
+MAX_TEXT_BYTES = 2 * 1024 * 1024
+
+
+def regular(path):
+    return path.is_file() and not path.is_symlink()
+
+
+def evidence(path, root):
+    size = path.stat().st_size
+    return {"path": path.relative_to(root).as_posix(), "bytes": size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if size <= MAX_TEXT_BYTES else None,
+            "read_state": "full" if size <= MAX_TEXT_BYTES else "not_read_size_limit"}
+
 
 def scan_repo(path="."):
-    p = Path(path)
-    report = {"pva_score": 0.0, "carencias": [], "checks": {}}
-    score = 0
-    total = 6
-    tex_files = list(p.glob("*.tex")) + list(p.glob("*.md"))
-    dois = []
-    for f in tex_files:
-        try:
-            dois += re.findall(r"10\.\d{4,}/[^\s}]+", f.read_text(errors='ignore'))
-        except:
-            pass
-    doi_ok = sum(1 for d in dois if check_doi(d)) if dois else 0
-    report["checks"]["doi"] = f"{doi_ok}/{len(dois)} verificables"
-    if doi_ok == len(dois) and dois:
-        score += 1
-    else:
-        report["carencias"].append(f"{len(dois)-doi_ok} DOIs rotos de {len(dois)}")
-    has_data = (p/"data").exists() or (p/"data.csv").exists() or any(p.glob("*GRACE*.csv"))
-    report["checks"]["datos"] = "publicos" if has_data else "faltan"
-    if has_data:
-        score += 1
-    else:
-        report["carencias"].append("datos no publicos con DOI/URL")
-    has_code = (p/".git").exists()
-    report["checks"]["codigo"] = "repo abierto" if has_code else "no git"
-    if has_code:
-        score += 1
-    else:
-        report["carencias"].append("codigo no en repo abierto")
-    has_docker = (p/"Dockerfile").exists() or (p/"docker-compose.yml").exists()
-    report["checks"]["docker"] = "presente" if has_docker else "ausente"
-    if has_docker:
-        score += 1
-    else:
-        report["carencias"].append("falta Dockerfile reproducible")
-    has_make = (p/"Makefile").exists()
-    has_repro = False
-    if has_make:
-        try:
-            has_repro = "reproduce" in (p/"Makefile").read_text()
-        except:
-            pass
-    report["checks"]["reproduce"] = "make reproduce existe" if has_repro else "falta"
-    if has_repro:
-        score += 1
-    else:
-        report["carencias"].append("falta make reproduce")
-    has_fig = len(list(p.glob("fig*.py"))) + len(list(p.glob("plot*.py"))) > 0
-    report["checks"]["figuras"] = "con codigo" if has_fig else "sin codigo fuente"
-    if has_fig:
-        score += 1
-    else:
-        report["carencias"].append("figuras sin codigo fuente")
-    report["pva_score"] = round(score/total, 3)
-    return report
+    root = Path(path).resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("repository path must be a directory")
+    text_files = sorted(p for p in root.iterdir() if regular(p)
+                        and p.suffix.lower() in {".md", ".tex"} and p.stat().st_size <= MAX_TEXT_BYTES)
+    dois = set()
+    for source in text_files:
+        text = source.read_text(encoding="utf-8", errors="replace")
+        dois.update(value.rstrip(".,;:)]}>") for value in re.findall(r"10\.\d{4,}/[^\s\"<>]+", text))
+    data = [p for p in root.glob("*.csv") if regular(p) and p.stat().st_size > 0]
+    directory = root / "data"
+    if directory.is_dir() and not directory.is_symlink():
+        data += [p for p in directory.iterdir() if regular(p) and p.stat().st_size > 0]
+    code = [p for p in root.iterdir() if regular(p) and p.suffix.lower() in {".py", ".js", ".ts", ".rs", ".lean", ".jl"}]
+    containers = [p for p in (root / "Dockerfile", root / "docker-compose.yml") if regular(p)]
+    make = root / "Makefile"
+    reproduce = regular(make) and make.stat().st_size <= MAX_TEXT_BYTES and bool(
+        re.search(r"^reproduce[ \t]*:(?!=)", make.read_text(encoding="utf-8", errors="replace"), re.M))
+    figures = [p for p in root.iterdir() if regular(p) and p.suffix == ".py"
+               and (p.name.startswith("fig") or p.name.startswith("plot"))]
+    groups = {"doi": text_files if dois else [], "datos": data, "codigo": code,
+              "docker": containers, "reproduce": [make] if reproduce else [], "figuras": figures}
+    checks = {name: {"state": "observed" if sources else "missing",
+                     "evidence": [evidence(p, root) for p in sorted(set(sources))]}
+              for name, sources in groups.items()}
+    checks["doi"]["identifiers"] = sorted(dois)
+    checks["doi"]["resolution_checked"] = False
+    observed = sum(item["state"] == "observed" for item in checks.values())
+    return {
+        "schema": "pva.artifact-readiness/v1",
+        "checks": checks,
+        "observed_checks": observed,
+        "total_checks": len(checks),
+        "structural_score": round(observed / len(checks), 3),
+        "carencias": [name for name, item in checks.items() if item["state"] == "missing"],
+        "public_access_verified": False,
+        "reproduction_executed": False,
+        "scientific_claims_validated": False,
+        "network_used": False,
+        "scope": "File presence and declared reproduce target only; no DOI resolution, license/publicity proof, container build, reproduction or scientific certification.",
+    }
 
-@click.command()
-@click.option("--path", default=".", help="Path repo paper")
-@click.option("--json", "json_out", is_flag=True, help="Salida JSON")
-def main(path, json_out):
-    r = scan_repo(path)
-    if json_out:
-        print(json.dumps(r, indent=2))
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--path", default=".")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        report = scan_repo(args.path)
+    except (OSError, ValueError) as error:
+        parser.exit(2, f"Blocked: {error}\n")
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
     else:
-        print(f"PVA-LINT V202 Score: {r['pva_score']} rho(x)>0")
-        for k,v in r["checks"].items():
-            print(f"  {k}: {v}")
-        if r["carencias"]:
-            print("  Carencias:")
-            for c in r["carencias"]:
-                print(f"   - {c}")
-        else:
-            print("  OK Sin carencias - transicion de fase alcanzada")
+        print(f"Artifact presence: {report['observed_checks']}/{report['total_checks']}")
+        for name, check in report["checks"].items():
+            print(f"  {name}: {check['state']}")
+        print(report["scope"])
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
