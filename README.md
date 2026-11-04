@@ -1,12 +1,14 @@
-# pva-lint V202 — ρ(x)>0
+# pva-lint
 
-Linter PVA — Score 0-1 — Transición de fase >0.999
+Inventario local de preparación de artefactos. Separa archivos observados de validación pública, reproducción y evidencia científica; no declara transiciones de fase a partir de un score de presencia.
 
-Verifica DOI, datos públicos, código abierto, Dockerfile, make reproduce, figuras con código.
+```bash
+python3 cli.py --path . --json
+python3 -m unittest discover -s tests -v
+```
 
-## Uso
+Usa solo la biblioteca estándar, sin red ni credenciales. El reporte versionado `pva.artifact-readiness/v1` registra rutas relativas y hashes de archivos, presencia de DOI, datos, código, Docker, target `reproduce` y scripts de figuras.
 
-    pip install requests click
-    python cli.py --json
+`structural_score` solo mide presencia. Un `.git` no demuestra código abierto; un directorio vacío no es un dataset; una mención de `reproduce` no es un target. No se resuelven DOIs, verifica licencia, compila Docker, ejecuta Makefile ni valida hipótesis científicas.
 
-Parte del ecosistema PVA — 5 capas — validación como transición de fase.
+Esta revisión cambia el contrato anterior `pva_score` por un esquema explícito. Los consumidores deben adaptarse; no se afirma compatibilidad silenciosa ni despliegue.

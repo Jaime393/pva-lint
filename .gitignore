@@ -1,2 +1,3 @@
-pva-lint-real.tar.gz
-*.tar.gz
+__pycache__/
+*.py[cod]
+pva_report.json
